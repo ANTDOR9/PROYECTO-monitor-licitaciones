@@ -43,6 +43,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from extract import departamento as E_departamento              # noqa: E402
 from buscar_actas import (categoria, config, descripcion, relevante,          # noqa: E402
                           id_proceso, texto_de)
 
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS postores (
     fecha        TEXT,
     categoria    TEXT,
     entidad      TEXT,
+    departamento TEXT,
     nomenclatura TEXT,
     descripcion  TEXT,
     ruc          TEXT NOT NULL,
@@ -157,9 +159,13 @@ def recolectar(anio: int, solo: str = "", ruta: Path | None = None) -> list[tupl
 
             ocid = rel.get("ocid", "")
             t = rel.get("tender") or {}
+            # La zona sale del propio release (parties[].address.region) y no de
+            # un cruce con la tabla licitaciones: esa tabla solo cubre los anios
+            # configurados en config.yaml, asi que un analisis de 2023-2024 se
+            # quedaba sin zona en todas sus filas.
             base = (ocid, id_proceso(ocid), anio, (rel.get("date") or "")[:10], cat,
-                    (rel.get("buyer") or {}).get("name", ""), t.get("title", ""),
-                    descripcion(rel)[:200])
+                    (rel.get("buyer") or {}).get("name", ""), E_departamento(rel),
+                    t.get("title", ""), descripcion(rel)[:200])
             monto = monto_adjudicado(rel)
             for g in gente:
                 filas.append((*base, g["ruc"], g["nombre"], g["gano"], monto))
@@ -168,15 +174,33 @@ def recolectar(anio: int, solo: str = "", ruta: Path | None = None) -> list[tupl
     return filas
 
 
+#: Columnas agregadas despues de la primera version. `CREATE TABLE IF NOT
+#: EXISTS` no toca una tabla que ya existe, asi que una base creada con el
+#: esquema viejo seguia sin la columna y el INSERT fallaba con
+#: "table postores has no column named ...". Agregar la columna a mano es lo
+#: que faltaba.
+COLUMNAS_NUEVAS = [("departamento", "TEXT")]
+
+
+def _migrar(con: sqlite3.Connection) -> None:
+    existentes = {r[1] for r in con.execute("PRAGMA table_info(postores)")}
+    for col, tipo in COLUMNAS_NUEVAS:
+        if col not in existentes:
+            con.execute(f"ALTER TABLE postores ADD COLUMN {col} {tipo}")
+            print(f"  (se agrego la columna '{col}' a la tabla postores)")
+    con.commit()
+
+
 def guardar(filas: list[tuple], anios: list[int], db: Path) -> int:
     con = sqlite3.connect(db)
     con.executescript(ESQUEMA)
+    _migrar(con)
     for a in anios:
         con.execute("DELETE FROM postores WHERE anio = ?", (a,))
     con.executemany(
         "INSERT OR REPLACE INTO postores (ocid, idproceso, anio, fecha, categoria, "
-        "entidad, nomenclatura, descripcion, ruc, nombre, gano, monto) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", filas)
+        "entidad, departamento, nomenclatura, descripcion, ruc, nombre, gano, monto) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", filas)
     con.commit()
     n = con.execute("SELECT COUNT(*) FROM postores").fetchone()[0]
     con.close()

@@ -92,11 +92,30 @@ python src/indexar_documentos.py --anios 2025 2026
 10) Historial de postores: qué empresas se presentan, cuántas veces y contra
     quién. Sale del OCDS, sin descargar ni leer PDF:
 ```bash
-python src/postores.py --anios 2025 2026 --solo INTERACTIVA
+python src/postores.py --anios 2023 2024 2025 2026 --solo INTERACTIVA
 python src/postores.py --informe --csv data/postores.csv
 ```
 
-11) Evaluar un requerimiento contra las fichas de BTOUCH y de la competencia:
+11) Reporte de inteligencia competitiva en Excel, a partir de lo que dejó el
+    paso anterior. Un libro con una hoja por nivel de agregación: empresas,
+    participaciones crudas, procesos, coincidencias entre empresas, indicadores
+    y matriz año por año.
+```bash
+python src/reporte_competencia.py
+python src/reporte_competencia.py --anios 2024 2025 2026
+python src/reporte_competencia.py --salida "C:/ruta/archivo.xlsx"
+```
+    El libro **no** se escribe dentro del repositorio. Por defecto va a la
+    carpeta del estudio de mercado y, si no existe, a `tmp/`, que está
+    ignorada por git. Dos lecturas obligatorias antes de usar sus números:
+    un año con muchas menos participaciones por proceso no tuvo menos
+    competencia, publicó peor la lista de postores; y la columna «exceso sobre
+    lo esperado» mide rareza estadística frente a un reparto al azar, no
+    concertación, porque ese modelo ignora que las empresas se concentran por
+    región, tipo de proceso y rango de monto. Sirve para priorizar qué
+    expediente leer. La hoja 00 del propio libro repite ambas advertencias.
+
+12) Evaluar un requerimiento contra las fichas de BTOUCH y de la competencia:
 ```bash
 python src/fichas.py                                    # inventario de fichas
 python src/evaluar_licitacion.py --demo                 # ejemplo de 86"
@@ -118,6 +137,9 @@ Qué hace cada módulo nuevo:
 - `src/evaluar_licitacion.py` — compara exigido contra ficha y dictamina
 - `src/indexar_documentos.py` — vuelca los documentos del OCDS a la tabla `documentos`
 - `src/postores.py` — historial de participantes por empresa, con RUC
+- `src/reporte_competencia.py` — libro Excel de inteligencia competitiva a
+  partir de la tabla `postores`, con cobertura por año y coincidencias entre
+  empresas; escribe fuera del repositorio
 - `src/panel_expediente.py` — el panel del tablero: ficha del proceso y, detrás de
   un botón, descarga, lectura y comparación contra BTOUCH
 
@@ -138,6 +160,7 @@ Acuerdo Marco de Perú Compras a monitorear — sin tocar código.
 - `src/bnacion.py` — extractor de bases de licitaciones y concursos (Banco de la Nación)
 - `src/dashboard.py` — tablero Streamlit (4 fuentes, búsqueda avanzada por fuente) + export Excel con formato
 - `src/_muestra.py` — genera datos de prueba
+- `src/reporte_competencia.py` — reporte Excel de competencia (salida fuera del repositorio)
 - `data/` — base SQLite (`licitaciones.db`, sí se versiona) y descargas crudas (no se versionan)
 - `.github/workflows/` — GitHub Actions que actualizan los datos automáticamente
 - `PROJECT_CONTEXT.md` — memoria técnica completa del proyecto (leer primero)
