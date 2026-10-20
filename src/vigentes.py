@@ -69,11 +69,27 @@ def tabla(con):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--archivo")
+    ap.add_argument("--crudo", metavar="RUTA",
+                    help="guarda la respuesta tal cual la devuelve la API y lista "
+                         "los campos de un registro. Sirve para ver si la API trae "
+                         "datos que el script todavia no guarda (por ejemplo los "
+                         "codigos de archivo de los documentos).")
     a = ap.parse_args()
     c = cfg()
     data = json.load(open(a.archivo, encoding="utf-8")) if a.archivo else descarga()
     if isinstance(data, dict):
         data = data.get("content") or data.get("data") or []
+
+    if a.crudo:
+        os.makedirs(os.path.dirname(os.path.abspath(a.crudo)) or ".", exist_ok=True)
+        with open(a.crudo, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=1)
+        print(f"Respuesta cruda guardada en {a.crudo} ({len(data)} registros).")
+        if data:
+            print("\nCampos que devuelve la API por registro:")
+            for k in sorted(data[0]):
+                print(f"   {k:<34} {str(data[0][k])[:58]}")
+            print()
     # NOTA (cambio v2): ya NO se pre-filtra por palabra clave aqui. Se guarda
     # TODO lo que trae la API -- el filtrado por etiquetas ahora vive 100% en
     # el dashboard (igual que streamlit_app.py), asi el panel editable de

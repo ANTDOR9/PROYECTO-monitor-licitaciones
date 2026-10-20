@@ -659,6 +659,122 @@ def vista_bnacion():
 # ================================================================
 # VISTA: COMPARADOR BTOUCH
 # ================================================================
+# Novedades del dia.
+#
+# El comparador trabaja sobre `licitaciones`, que sale de los paquetes anuales
+# del OCDS y llega con alrededor de dos semanas de retraso: un filtro de "hoy"
+# sobre esa tabla devuelve cero todos los dias. Lo que si esta al dia es
+# `vigentes`, que viene de la API en vivo del SEACE y la Action refresca a
+# diario. Por eso se muestran las dos cosas juntas y separadas: la novedad
+# avisa que el proceso existe, el historico es el que se puede analizar.
+CATS_INTERACTIVAS = ("Pantalla interactiva", "Pizarra digital",
+                     "Panel interactivo", "Monitor interactivo")
+
+VENTANAS = {"Hoy": 1, "Ultimos 3 dias": 3, "Ultimos 7 dias": 7,
+            "Ultimos 15 dias": 15, "Ultimos 30 dias": 30, "Todo": None}
+
+
+def _idprocesos_indexados(db, pe):
+    """idProceso que ya tienen documentos descargables indexados."""
+    try:
+        con = sqlite3.connect(f"file:{pe.ruta_analisis(db)}?mode=ro", uri=True)
+        ids = {str(r[0]) for r in con.execute(
+            "select distinct idproceso from documentos where idproceso is not null")}
+        con.close()
+        return ids
+    except sqlite3.Error:
+        return set()
+
+
+def _aviso_retraso(db):
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        ultima = con.execute("select max(fecha) from licitaciones").fetchone()[0]
+        con.close()
+    except sqlite3.Error:
+        ultima = None
+    if not ultima:
+        return ("Las convocatorias salen de la API en vivo del SEACE; los documentos "
+                "descargables, de los paquetes del OCDS, que llegan con retraso.")
+    dias = (pd.Timestamp.now().normalize() - pd.Timestamp(ultima)).days
+    return (f"Las convocatorias de arriba salen de la API en vivo del SEACE y estan al "
+            f"dia. Los documentos descargables vienen de los paquetes del OCDS, cuyo "
+            f"proceso mas reciente es del {ultima} ({dias} dias de retraso): por eso una "
+            f"convocatoria nueva aparece aca antes de poder analizarse. Para acortar la "
+            f"espera: python src/extract.py --refrescar y despues "
+            f"python src/indexar_documentos.py")
+
+
+def novedades_del_dia(db, pe):
+    """Lo convocado recien, con el estado de si ya se puede comparar o no."""
+    st.subheader("Novedades — lo que se convoco recien")
+    df = leer("vigentes")
+    if df.empty:
+        st.warning("Sin datos de oportunidades vigentes. Corre:  python src/vigentes.py")
+        return
+
+    df = df.copy()
+    df["_texto"] = (df["objeto"].fillna("") + " " + df["descripcion"].fillna("") + " "
+                    + df["nomenclatura"].fillna("")).apply(_norm)
+    df["Producto"] = df["_texto"].apply(categoria_producto)
+
+    # Por defecto solo pantalla o pizarra interactiva. La casilla amplia a lo
+    # que el proyecto etiqueta como del rubro (videowall, televisores,
+    # equipamiento audiovisual): ahi aparecen convocatorias genericas de
+    # "equipamiento audiovisual" que pueden incluir paneles en su lista de
+    # items sin decirlo en el titulo. Son mas ruidosas, pero esconderlas
+    # siempre es peor que mostrarlas aparte.
+    ancho = st.checkbox("Incluir audiovisual relacionado (videowall, televisores, "
+                        "equipamiento)", key="cmp_ancho")
+    if ancho:
+        claves = cfg().get("palabras_clave", [])
+        if isinstance(claves, dict):
+            claves = [t for v in claves.values() for t in v]
+        excluir = [_norm(x) for x in cfg().get("palabras_excluir", [])]
+        df = df[df["_texto"].apply(
+            lambda t: etiqueta_de(t, claves, excluir) is not None)].copy()
+    else:
+        df = df[df["Producto"].isin(CATS_INTERACTIVAS)].copy()
+    df["_conv"] = pd.to_datetime(df["fecha_convocatoria"], errors="coerce", dayfirst=True)
+
+    etiqueta = st.radio("Convocadas en", list(VENTANAS), index=4, horizontal=True,
+                        key="cmp_ventana")
+    dias = VENTANAS[etiqueta]
+    hoy = pd.Timestamp.now().normalize()
+    f = df if dias is None else df[df["_conv"] >= hoy - pd.Timedelta(days=dias - 1)]
+    f = f.copy()
+
+    ids = _idprocesos_indexados(db, pe)
+    f["Estado"] = f["id"].astype(str).apply(
+        lambda x: "listo para comparar" if x in ids else "esperando documentos")
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Convocadas hoy", int((df["_conv"] >= hoy).sum()))
+    k2.metric(f"En la ventana ({etiqueta.lower()})", len(f))
+    k3.metric("Listas para comparar", int((f["Estado"] == "listo para comparar").sum()))
+
+    if not len(f):
+        st.info("Ninguna convocatoria del rubro en esa ventana. Es lo esperable: el "
+                "historico promedia dos procesos de pantalla interactiva al mes en "
+                "todo el pais. Ampliá la ventana o marcá la casilla de audiovisual "
+                "relacionado.")
+    else:
+        vista = (f.sort_values("_conv", ascending=False)
+                  [["_conv", "Estado", "Producto", "nomenclatura", "entidad",
+                    "descripcion", "fecha_presentacion", "enlace"]]
+                  .rename(columns={"_conv": "Convocatoria", "nomenclatura": "Nomenclatura",
+                                   "entidad": "Entidad", "descripcion": "Objeto",
+                                   "fecha_presentacion": "Presentacion de ofertas",
+                                   "enlace": "Ficha SEACE"}))
+        st.dataframe(vista, use_container_width=True, hide_index=True,
+                     height=altura_tabla(len(vista), maximo=380),
+                     column_config={
+                         "Convocatoria": st.column_config.DatetimeColumn(format="DD/MM/YYYY"),
+                         "Ficha SEACE": st.column_config.LinkColumn(display_text="abrir"),
+                     })
+    st.caption(_aviso_retraso(db))
+
+
 def vista_comparador():
     import panel_expediente as pe
 
@@ -671,6 +787,12 @@ def vista_comparador():
     )
 
     db = ruta_db()
+    novedades_del_dia(db, pe)
+    st.divider()
+
+    st.subheader("Historico comparable")
+    st.caption("Procesos cuyos documentos ya estan indexados: aca se corre la "
+               "comparacion campo por campo contra las fichas.")
     if not pe.hay_indice(db):
         st.warning("Todavia no hay documentos indexados.")
         st.code("python src/extract.py --refrescar\npython src/indexar_documentos.py",
