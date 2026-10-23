@@ -56,14 +56,30 @@ def fila(o):
         "fecha_presentacion": o.get("fechaPresentacionPropuestas", ""),
         "ubigeo": o.get("ubigeo"),
         "enlace": f"https://prod4.seace.gob.pe/openegocio/#/ficha/idProceso/{o.get('idProcedimiento')}",
+        # Codigo de archivo de las bases. La API lo devuelve en TODOS los
+        # procedimientos y se verifico que sirve con un GET directo al mismo
+        # servlet que usa descargar_documento.py. Es lo que permite leer el
+        # requerimiento el mismo dia de la convocatoria, sin esperar las dos
+        # semanas que tarda el paquete anual del OCDS en publicar el expediente.
+        "documento_base": o.get("documentoBase") or "",
     }
+
+#: Columnas agregadas despues de la primera version. CREATE TABLE IF NOT EXISTS
+#: no altera una tabla que ya existe, asi que hay que agregarlas a mano o el
+#: INSERT falla contra una base vieja.
+COLUMNAS_NUEVAS = [("documento_base", "TEXT")]
 
 def tabla(con):
     con.execute("""CREATE TABLE IF NOT EXISTS vigentes(
         id INTEGER PRIMARY KEY, nomenclatura TEXT, entidad TEXT, objeto TEXT,
         tipo_proceso TEXT, descripcion TEXT, valor_referencial REAL, moneda TEXT,
         fecha_convocatoria TEXT, fecha_fin_inscripcion TEXT, fecha_presentacion TEXT,
-        ubigeo INTEGER, enlace TEXT)""")
+        ubigeo INTEGER, enlace TEXT, documento_base TEXT)""")
+    existentes = {r[1] for r in con.execute("PRAGMA table_info(vigentes)")}
+    for col, tipo in COLUMNAS_NUEVAS:
+        if col not in existentes:
+            con.execute(f"ALTER TABLE vigentes ADD COLUMN {col} {tipo}")
+            print(f"  (se agrego la columna '{col}' a la tabla vigentes)")
     con.commit()
 
 def main():
@@ -107,12 +123,24 @@ def main():
         vistos.add(idp)
         filas.append(fila(o))
     if filas:
-        con.executemany("""INSERT OR REPLACE INTO vigentes VALUES
+        # Se nombran las columnas: con VALUES a secas, agregar una columna
+        # cambia el orden posicional y el INSERT empieza a guardar los datos
+        # corridos de lugar sin avisar.
+        con.executemany("""INSERT OR REPLACE INTO vigentes
+            (id, nomenclatura, entidad, objeto, tipo_proceso, descripcion,
+             valor_referencial, moneda, fecha_convocatoria, fecha_fin_inscripcion,
+             fecha_presentacion, ubigeo, enlace, documento_base)
+            VALUES
             (:id,:nomenclatura,:entidad,:objeto,:tipo_proceso,:descripcion,
              :valor_referencial,:moneda,:fecha_convocatoria,:fecha_fin_inscripcion,
-             :fecha_presentacion,:ubigeo,:enlace)""", filas)
+             :fecha_presentacion,:ubigeo,:enlace,:documento_base)""", filas)
         con.commit()
-    print(f"Total vigentes: {len(data)} guardados (sin pre-filtrar; el dashboard filtra por etiquetas).")
+    # La API devuelve un registro por ITEM, no por procedimiento: varios
+    # comparten idProcedimiento y la tabla los colapsa. Decir "3121
+    # guardados" cuando en la tabla quedan 2601 es informar de mas.
+    print(f"Total vigentes: {len(filas)} procedimientos guardados "
+          f"({len(data)} registros en la API, uno por item). "
+          f"Sin pre-filtrar; el dashboard filtra por etiquetas.")
     con.close()
 
 if __name__ == "__main__":

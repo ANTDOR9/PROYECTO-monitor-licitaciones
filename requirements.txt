@@ -2,7 +2,8 @@ pandas>=2.0
 pyyaml>=6.0
 requests>=2.31
 openpyxl>=3.1
-streamlit>=1.30
+streamlit>=1.65   # 'width' reemplaza a use_container_width; con versiones
+                  # anteriores el tablero levanta igual pero avisa en cada corrida
 beautifulsoup4>=4.12
 
 # Pipeline de especificaciones (src/contenedores.py, ocr.py, buscar_actas.py).

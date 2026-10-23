@@ -147,10 +147,20 @@ def analizar(filecode: str, nombre_doc: str = "", avisar=lambda paso: None) -> d
         return salida
     salida["archivos"] = [d.nombre for d in abierto.documentos]
 
+    import texto_office                                          # noqa: PLC0415
+
     doc = abierto.mejor
-    if doc is None or doc.tipo != "pdf":
-        salida["motivo"] = ("El expediente no trae ningún PDF legible. "
+    if doc is None:
+        salida["motivo"] = ("El expediente no trae ningún documento legible. "
                             f"Contiene: {', '.join(salida['archivos'][:6]) or 'nada'}")
+        return salida
+    if doc.tipo != "pdf" and doc.tipo not in texto_office.TIPOS:
+        nombres = {"xlsx": "una hoja de cálculo", "zip": "un comprimido",
+                   "rar5": "un comprimido", "rar4": "un comprimido"}
+        salida["motivo"] = (
+            f"El documento principal del expediente es {nombres.get(doc.tipo, doc.tipo)} "
+            f"(«{doc.nombre}»), y el lector solo entiende PDF y Word. "
+            f"Contiene: {', '.join(salida['archivos'][:6]) or 'nada'}")
         return salida
     salida["documento"] = doc.nombre
     salida["clase"] = doc.clase
@@ -158,16 +168,30 @@ def analizar(filecode: str, nombre_doc: str = "", avisar=lambda paso: None) -> d
     # --- 3. leer ------------------------------------------------------------
     avisar(f"Leyendo «{doc.nombre[:48]}»")
     salida["paso"] = "lectura"
-    try:
-        from extractor import localizar                          # noqa: PLC0415
-        bloque = localizar(doc.ruta)
-    except ImportError as e:
-        salida["motivo"] = (f"Falta una librería para leer PDF ({e.name}). "
-                            f"Instalá:  pip install pypdf pdfplumber")
-        return salida
-    except Exception as e:                                       # noqa: BLE001
-        salida["motivo"] = f"No se pudo leer el PDF: {type(e).__name__}: {e}"
-        return salida
+    if doc.tipo in texto_office.TIPOS:
+        # Word no tiene paginas que recorrer como el PDF: se lee entero y se
+        # deja que el extractor busque en todo el texto. Sale mas ruidoso, pero
+        # es la unica forma de no descartar un expediente por su formato.
+        from extractor import Bloque                              # noqa: PLC0415
+        crudo = texto_office.texto(doc.ruta, doc.tipo)
+        if not crudo.strip():
+            salida["motivo"] = (
+                f"«{doc.nombre}» es un documento de Word del que no se pudo "
+                f"rescatar texto. Suele pasar cuando el contenido son imágenes "
+                f"pegadas dentro del documento.")
+            return salida
+        bloque = Bloque(texto=crudo, origen="word")
+    else:
+        try:
+            from extractor import localizar                      # noqa: PLC0415
+            bloque = localizar(doc.ruta)
+        except ImportError as e:
+            salida["motivo"] = (f"Falta una librería para leer PDF ({e.name}). "
+                                f"Instalá:  pip install pypdf pdfplumber")
+            return salida
+        except Exception as e:                                   # noqa: BLE001
+            salida["motivo"] = f"No se pudo leer el PDF: {type(e).__name__}: {e}"
+            return salida
 
     salida["origen"] = getattr(bloque, "origen", "?")
     salida["paginas"] = list(getattr(bloque, "paginas", []) or [])
@@ -187,8 +211,24 @@ def analizar(filecode: str, nombre_doc: str = "", avisar=lambda paso: None) -> d
     salida["specs"] = {k: v for k, v in asdict(specs).items() if v is not None}
     salida["cobertura"] = specs.cobertura()
     if not salida["specs"]:
-        salida["motivo"] = ("Se leyó el documento pero no se reconoció ningún "
-                            "parámetro técnico en la sección localizada.")
+        if salida.get("origen") == "sin_ocr":
+            salida["motivo"] = (
+                "El requerimiento está en páginas escaneadas y este equipo no "
+                "tiene OCR instalado, así que esas páginas se leyeron vacías.\n\n"
+                "Instalá las dos herramientas y volvé a intentar:\n\n"
+                "```\nwinget install UB-Mannheim.TesseractOCR\n"
+                "winget install oschwartz10612.Poppler\n```\n\n"
+                "Hace falta además el paquete de idioma español de Tesseract "
+                "(`spa`), que el instalador ofrece durante la instalación. "
+                "Comprobalo después con:  `python src/comprobar_entorno.py`")
+        else:
+            salida["motivo"] = (
+                "Se leyó el documento pero no se reconoció ningún parámetro "
+                "técnico. Si el proceso es anterior a 2018, suele ser real y no "
+                "un fallo: esas bases describen pizarras de proyección "
+                "—superficie, área sensitiva, puerto USB— y no los parámetros de "
+                "un panel moderno (Android, RAM, OPS, brillo en cd/m²), que son "
+                "los que el extractor busca.")
         return salida
 
     # --- 5. evaluar ---------------------------------------------------------
@@ -257,7 +297,7 @@ def _tabla_resultados(resultados: list[dict]) -> None:
             "Cumple": r["verde"], "Observado": r["amarillo"],
             "No cumple": r["rojo"], "Sin dato": r["sin_dato"],
         } for r in sorted(utiles, key=lambda r: (r["rojo"], -r["comparables"]))])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
     for r in sorted(utiles, key=lambda r: (r["rojo"], -r["comparables"])):
         bloq = [d for d in r["detalle"] if d["resultado"] == "NO CUMPLE"]
@@ -326,17 +366,27 @@ def render(fila: dict, db: Path | str) -> None:
     clave = f"analisis_{elegido['filecode']}"
     if st.button("Analizar expediente y comparar con BTOUCH", key=f"btn_{ocid}",
                  type="primary"):
-        with st.status("Analizando…", expanded=True) as estado:
-            def avisar(paso):
-                estado.update(label=paso)
-                st.write(paso)
-            resultado = analizar(elegido["filecode"], elegido["titulo"], avisar)
-            estado.update(
-                label="Análisis completo" if resultado["ok"] else
-                      f"Se detuvo en: {resultado['paso']}",
-                state="complete" if resultado["ok"] else "error", expanded=False)
-        st.session_state[clave] = resultado
+        _correr(elegido["filecode"], elegido["titulo"], clave)
 
+    _mostrar(clave)
+
+
+def _correr(filecode: str, titulo: str, clave: str) -> None:
+    """Descarga, lee y compara. Deja el resultado en la sesión."""
+    with st.status("Analizando…", expanded=True) as estado:
+        def avisar(paso):
+            estado.update(label=paso)
+            st.write(paso)
+        resultado = analizar(filecode, titulo, avisar)
+        estado.update(
+            label="Análisis completo" if resultado["ok"] else
+                  f"Se detuvo en: {resultado['paso']}",
+            state="complete" if resultado["ok"] else "error", expanded=False)
+    st.session_state[clave] = resultado
+
+
+def _mostrar(clave: str) -> None:
+    """Pinta el resultado guardado, si lo hay."""
     resultado = st.session_state.get(clave)
     if not resultado:
         st.caption("El análisis descarga el expediente y lo lee. Puede tardar entre "
@@ -351,9 +401,20 @@ def render(fila: dict, db: Path | str) -> None:
         return
 
     origen = resultado.get("origen", "?")
+    COMO_SE_LEYO = {"nativo": "texto nativo", "ocr": "reconocimiento óptico",
+                    "mixto": "texto nativo más OCR de las páginas escaneadas",
+                    "sin_ocr": "solo texto nativo, sin OCR",
+                    "word": "documento de Word"}
+    if origen == "sin_ocr":
+        st.warning(
+            "El documento tiene páginas escaneadas que no se pudieron leer "
+            "porque falta el OCR en este equipo. Lo que ves abajo sale solo de "
+            "las páginas con texto, así que puede estar incompleto. Para "
+            "instalarlo:  `winget install UB-Mannheim.TesseractOCR` y "
+            "`winget install oschwartz10612.Poppler`.")
     st.success(
         f"Leído **{resultado.get('documento', '')}** "
-        f"({'texto nativo' if origen == 'nativo' else 'reconocimiento óptico'}"
+        f"({COMO_SE_LEYO.get(origen, origen)}"
         + (f", páginas {resultado['paginas']}" if resultado.get("paginas") else "")
         + f"). Se reconocieron {len(resultado['specs'])} parámetros "
           f"({resultado['cobertura']:.0%} de cobertura).")
@@ -364,3 +425,41 @@ def render(fila: dict, db: Path | str) -> None:
 
     _tabla_resultados(resultado["resultados"])
     _pie_manual()
+
+
+def render_convocatoria(fila: dict) -> None:
+    """
+    Panel para una convocatoria VIGENTE, sin pasar por el índice del OCDS.
+
+    La API en vivo del SEACE devuelve, en cada procedimiento, el campo
+    `documentoBase`: el mismo código de archivo con el que se descargan las
+    bases. Se verificó que funciona con un GET directo, así que un proceso
+    convocado hoy se puede leer hoy, sin esperar a que el paquete anual del
+    OCDS lo publique —que lleva alrededor de dos semanas—.
+
+    Lo que no se obtiene por esta vía es el resto del expediente: acá solo
+    están las bases. Alcanza para el requerimiento técnico, que es lo que
+    compara el motor.
+    """
+    c = st.columns([2, 1, 1])
+    c[0].markdown(f"**{(fila.get('entidad') or '—')[:60]}**")
+    c[0].caption(fila.get("nomenclatura") or "")
+    c[1].metric("Convocatoria", str(fila.get("fecha_convocatoria") or "—")[:10])
+    c[2].metric("Presentación", str(fila.get("fecha_presentacion") or "—")[:10])
+    if fila.get("descripcion"):
+        st.caption(str(fila["descripcion"])[:300])
+    if fila.get("enlace"):
+        st.markdown(f"[Ver la ficha en SEACE]({fila['enlace']})")
+
+    filecode = (fila.get("documento_base") or "").strip()
+    if not filecode:
+        st.info("Esta convocatoria no trae código de bases en la API. Habrá que "
+                "esperar a que el paquete del OCDS publique su expediente.")
+        return
+
+    st.divider()
+    clave = f"analisis_{filecode}"
+    if st.button("Descargar bases y comparar con BTOUCH",
+                 key=f"btn_vig_{filecode}", type="primary"):
+        _correr(filecode, f"Bases de {fila.get('nomenclatura') or filecode}", clave)
+    _mostrar(clave)

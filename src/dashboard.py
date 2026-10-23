@@ -43,12 +43,12 @@ def selector_todos(key, etiqueta_singular="registros"):
     c1, c2 = st.columns(2)
     if c1.button("🏷️ Solo relevantes", key=f"{key}_rel",
                  type="secondary" if st.session_state[key] else "primary",
-                 use_container_width=True):
+                 width="stretch"):
         st.session_state[key] = False
         st.rerun()
     if c2.button(f"👁️ Ver TODOS los {etiqueta_singular}", key=f"{key}_todos_btn",
                  type="primary" if st.session_state[key] else "secondary",
-                 use_container_width=True):
+                 width="stretch"):
         st.session_state[key] = True
         st.rerun()
     return st.session_state[key]
@@ -254,7 +254,7 @@ def vista_perucompras():
     hcol1.write("")
     if "pc_avanzado" not in st.session_state:
         st.session_state.pc_avanzado = False
-    if hcol2.button("🔍 Búsqueda avanzada", key="btn_pc_avanzado", use_container_width=True):
+    if hcol2.button("🔍 Búsqueda avanzada", key="btn_pc_avanzado", width="stretch"):
         st.session_state.pc_avanzado = not st.session_state.pc_avanzado
 
     total_antes_avanzado = len(f)
@@ -302,7 +302,7 @@ def vista_perucompras():
     tabla_pc = tabla_pc[cols_pc].sort_values("Fecha aceptación", ascending=False)
     st.dataframe(
         tabla_pc.style.apply(_colorea_perucompras_render, axis=1),
-        use_container_width=True, hide_index=True, height=altura_tabla(len(tabla_pc)),
+        width="stretch", hide_index=True, height=altura_tabla(len(tabla_pc)),
     )
     st.caption("🟢 Aceptada/Entregada  🟡 Pendiente  🔴 Vencida/Rechazada/Anulada  ⬜ Sin dato")
     st.info(f"🔎 Para ver el detalle de una orden: copia su **N° Orden de Compra** y búscalo en el "
@@ -382,12 +382,12 @@ def vista_seace():
                 }).sort_values("Dias restantes", na_position="last")
                 st.dataframe(
                     tabla.style.apply(_colorea, axis=1),
-                    use_container_width=True, hide_index=True, height=altura_tabla(len(tabla)),
+                    width="stretch", hide_index=True, height=altura_tabla(len(tabla)),
                     column_config={"Ver en SEACE": st.column_config.LinkColumn("Ver en SEACE", display_text="Abrir portal")},
                 )
                 with st.expander("Resumen por etiqueta"):
                     st.dataframe(f.groupby("Etiqueta").size().reset_index(name="Oportunidades"),
-                                 use_container_width=True, hide_index=True)
+                                 width="stretch", hide_index=True)
                 export_button(f, "vigentes_export.xlsx")
 
     with tab2:
@@ -404,7 +404,7 @@ def vista_seace():
             hcol1.subheader("Historico de adjudicaciones")
             if "hist_avanzado" not in st.session_state:
                 st.session_state.hist_avanzado = False
-            if hcol2.button("🔍 Búsqueda histórico avanzado", key="btn_hist_avanzado", use_container_width=True):
+            if hcol2.button("🔍 Búsqueda histórico avanzado", key="btn_hist_avanzado", width="stretch"):
                 st.session_state.hist_avanzado = not st.session_state.hist_avanzado
 
             f = df
@@ -460,7 +460,7 @@ def vista_seace():
             cols_mostrar = [c for c in df.columns if not c.startswith("_")]
             st.dataframe(
                 f[cols_mostrar].sort_values("fecha", ascending=False),
-                use_container_width=True, hide_index=True, height=altura_tabla(len(f)),
+                width="stretch", hide_index=True, height=altura_tabla(len(f)),
                 column_config={"enlace": st.column_config.LinkColumn(
                     "Ficha SEACE", display_text="Ver proceso")},
             )
@@ -510,7 +510,7 @@ def vista_petroperu():
     hcol1, hcol2 = st.columns([3, 1])
     if "pp_avanzado" not in st.session_state:
         st.session_state.pp_avanzado = False
-    if hcol2.button("🔍 Búsqueda avanzada", key="btn_pp_avanzado", use_container_width=True):
+    if hcol2.button("🔍 Búsqueda avanzada", key="btn_pp_avanzado", width="stretch"):
         st.session_state.pp_avanzado = not st.session_state.pp_avanzado
 
     total_antes_avanzado = len(f)
@@ -556,7 +556,7 @@ def vista_petroperu():
     cols_pp = [c for c in cols_pp if c in tabla_pp.columns]
     st.dataframe(
         tabla_pp[cols_pp].sort_values("Fecha publicación", ascending=False),
-        use_container_width=True, hide_index=True, height=altura_tabla(len(tabla_pp)),
+        width="stretch", hide_index=True, height=altura_tabla(len(tabla_pp)),
         column_config={"Documento": st.column_config.LinkColumn("Documento", display_text="Ver PDF")},
     )
     export_button(f, "petroperu_export.xlsx")
@@ -597,7 +597,7 @@ def vista_bnacion():
     hcol1, hcol2 = st.columns([3, 1])
     if "bn_avanzado" not in st.session_state:
         st.session_state.bn_avanzado = False
-    if hcol2.button("🔍 Búsqueda avanzada", key="btn_bn_avanzado", use_container_width=True):
+    if hcol2.button("🔍 Búsqueda avanzada", key="btn_bn_avanzado", width="stretch"):
         st.session_state.bn_avanzado = not st.session_state.bn_avanzado
 
     total_antes_avanzado = len(f)
@@ -648,7 +648,7 @@ def vista_bnacion():
     cols_bn = [c for c in cols_bn if c in tabla_bn.columns]
     st.dataframe(
         tabla_bn[cols_bn].sort_values("Fecha bases", ascending=False),
-        use_container_width=True, hide_index=True, height=altura_tabla(len(tabla_bn)),
+        width="stretch", hide_index=True, height=altura_tabla(len(tabla_bn)),
         column_config={"Documento": st.column_config.LinkColumn("Documento", display_text="Ver bases (PDF)")},
     )
     export_button(f, "bnacion_export.xlsx")
@@ -744,14 +744,27 @@ def novedades_del_dia(db, pe):
     f = df if dias is None else df[df["_conv"] >= hoy - pd.Timedelta(days=dias - 1)]
     f = f.copy()
 
+    # La API trae el codigo de las bases en `documento_base`, asi que una
+    # convocatoria de hoy ya se puede leer hoy. Solo queda sin analizar la que
+    # no trae codigo. La columna puede faltar si todavia no se volvio a correr
+    # vigentes.py despues de la actualizacion.
     ids = _idprocesos_indexados(db, pe)
-    f["Estado"] = f["id"].astype(str).apply(
-        lambda x: "listo para comparar" if x in ids else "esperando documentos")
+    if "documento_base" not in f.columns:
+        f["documento_base"] = ""
+    f["documento_base"] = f["documento_base"].fillna("")
+
+    def _estado(r):
+        if str(r["id"]) in ids:
+            return "expediente indexado"
+        return "bases disponibles" if r["documento_base"] else "sin documento"
+
+    f["Estado"] = f.apply(_estado, axis=1) if len(f) else []
 
     k1, k2, k3 = st.columns(3)
     k1.metric("Convocadas hoy", int((df["_conv"] >= hoy).sum()))
     k2.metric(f"En la ventana ({etiqueta.lower()})", len(f))
-    k3.metric("Listas para comparar", int((f["Estado"] == "listo para comparar").sum()))
+    k3.metric("Analizables ahora",
+              int((f["Estado"] != "sin documento").sum()) if len(f) else 0)
 
     if not len(f):
         st.info("Ninguna convocatoria del rubro en esa ventana. Es lo esperable: el "
@@ -766,12 +779,28 @@ def novedades_del_dia(db, pe):
                                    "entidad": "Entidad", "descripcion": "Objeto",
                                    "fecha_presentacion": "Presentacion de ofertas",
                                    "enlace": "Ficha SEACE"}))
-        st.dataframe(vista, use_container_width=True, hide_index=True,
+        st.dataframe(vista, width="stretch", hide_index=True,
                      height=altura_tabla(len(vista), maximo=380),
                      column_config={
                          "Convocatoria": st.column_config.DatetimeColumn(format="DD/MM/YYYY"),
                          "Ficha SEACE": st.column_config.LinkColumn(display_text="abrir"),
                      })
+
+        analizables = f[f["Estado"] != "sin documento"].sort_values(
+            "_conv", ascending=False).reset_index(drop=True)
+        if len(analizables):
+            st.markdown("**Analizar una convocatoria**")
+            st.caption("Descarga las bases por su codigo y corre la comparacion "
+                       "contra las fichas, sin esperar al OCDS.")
+
+            def _etq(i):
+                r = analizables.loc[i]
+                return (f"{str(r['_conv'])[:10]} - {str(r['nomenclatura'])[:26]} - "
+                        f"{str(r['entidad'])[:40]}")
+
+            j = st.selectbox("Convocatoria", range(len(analizables)),
+                             format_func=_etq, key="cmp_vig_sel")
+            pe.render_convocatoria(analizables.loc[j].to_dict())
     st.caption(_aviso_retraso(db))
 
 
@@ -869,7 +898,7 @@ def selector_fuente():
     for col, (clave, etiqueta) in zip(cols, FUENTES.items()):
         activo = st.session_state.vista == clave
         if col.button(etiqueta, key=f"sel_{clave}", type="primary" if activo else "secondary",
-                       use_container_width=True):
+                       width="stretch"):
             st.session_state.vista = clave
             st.rerun()
     st.divider()
